@@ -31,9 +31,13 @@ const schema = z.object({
 
 const parsed = schema.safeParse(process.env);
 if (!parsed.success) {
-  console.error('Invalid environment configuration:');
-  console.error(z.treeifyError(parsed.error));
-  process.exit(1);
+  // Never call process.exit() in code that can run as a serverless function —
+  // it kills the entire function invocation (Vercel reports this as
+  // FUNCTION_INVOCATION_FAILED with no useful detail), and on a warm
+  // container it can take other concurrent, unrelated invocations down with
+  // it. Throwing instead surfaces a normal error with this exact message in
+  // the platform's logs, and still fails fast in local/VPS use the same way.
+  throw new Error(`Invalid environment configuration:\n${JSON.stringify(z.treeifyError(parsed.error), null, 2)}`);
 }
 
 export const env = parsed.data;
