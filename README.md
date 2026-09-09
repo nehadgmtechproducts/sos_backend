@@ -31,6 +31,27 @@ When `fcmToken` is provided, the backend sends the OTP in a Firebase Cloud
 Messaging notification. FCM is best-effort, so use SMS as the production
 fallback for account verification.
 
+## Rate-limit store (required on serverless)
+
+The OTP request/verify limiters use an in-memory counter by default — fine for
+a single long-running process, but on serverless (Vercel) each function
+instance has its own memory, so limits are only enforced per-instance, not
+globally.
+
+To fix this, set up Upstash Redis (REST-based, no persistent connection —
+works well from serverless):
+
+1. Create a free database at [upstash.com](https://upstash.com) (or via the
+   Vercel Marketplace → Upstash integration, which sets the env vars for you
+   automatically).
+2. Copy the **REST URL** and **REST TOKEN** from its dashboard.
+3. Set `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` in your
+   environment (both together — set only one and startup fails validation).
+
+Without these two vars, the API falls back to in-memory limiting
+automatically (a startup log line confirms which mode is active) — no local
+setup required for development.
+
 | UI screen | Endpoint |
 | --- | --- |
 | User details / view profile | `GET /api/v1/users/me` |

@@ -1,7 +1,7 @@
 import { requireAuth } from '../middleware/auth.js';
 import { revokeAccessToken } from '../services/token.service.js';
 import { Router } from 'express';
-import rateLimit from 'express-rate-limit';
+import { createIpRateLimiter } from '../middleware/rateLimit.js';
 import { validateBody } from '../middleware/validate.js';
 import {
   postRequestOtp,
@@ -11,20 +11,18 @@ import {
 } from '../controllers/auth.controller.js';
 
 /** Per-IP ceiling on top of the per-phone cooldown inside the service. */
-const otpRequestLimiter = rateLimit({
+const otpRequestLimiter = createIpRateLimiter({
   windowMs: 15 * 60 * 1000,
   limit: 10,
-  standardHeaders: 'draft-7',
-  legacyHeaders: false,
-  message: { error: { code: 'RATE_LIMITED', message: 'Too many requests. Please try again later.' } },
+  message: 'Too many requests. Please try again later.',
+  keyPrefix: 'otp-request',
 });
 
-const otpVerifyLimiter = rateLimit({
+const otpVerifyLimiter = createIpRateLimiter({
   windowMs: 15 * 60 * 1000,
   limit: 30,
-  standardHeaders: 'draft-7',
-  legacyHeaders: false,
-  message: { error: { code: 'RATE_LIMITED', message: 'Too many attempts. Please try again later.' } },
+  message: 'Too many attempts. Please try again later.',
+  keyPrefix: 'otp-verify',
 });
 
 const router = Router();

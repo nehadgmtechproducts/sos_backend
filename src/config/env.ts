@@ -16,7 +16,18 @@ const schema = z.object({
   FIREBASE_SERVICE_ACCOUNT_PATH: z.string().min(1).optional(),
   /** Production-safe alternative: inject the complete JSON through a secret manager. */
   FIREBASE_SERVICE_ACCOUNT_JSON: z.string().min(1).optional(),
-});
+  /**
+   * Shared rate-limit store (Upstash Redis, REST-based — no persistent
+   * connection, works well from serverless). Both must be set together, or
+   * both omitted. Without them, rate limiting falls back to in-memory —
+   * fine for local dev, but only enforced per-instance on serverless.
+   */
+  UPSTASH_REDIS_REST_URL: z.string().url().optional(),
+  UPSTASH_REDIS_REST_TOKEN: z.string().min(1).optional(),
+}).refine(
+  (value) => Boolean(value.UPSTASH_REDIS_REST_URL) === Boolean(value.UPSTASH_REDIS_REST_TOKEN),
+  { message: 'UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN must be set together.', path: ['UPSTASH_REDIS_REST_URL'] },
+);
 
 const parsed = schema.safeParse(process.env);
 if (!parsed.success) {
