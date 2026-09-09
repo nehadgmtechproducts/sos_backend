@@ -1,11 +1,11 @@
-import { createApp } from './app.js';
+import app from './app.js';
 import { env } from './config/env.js';
 import { ensureSessionSchema, verifyDatabaseConnection } from './store/database.store.js';
 
 async function start() {
   await verifyDatabaseConnection();
   await ensureSessionSchema();
-  createApp().listen(env.PORT, () => {
+  app.listen(env.PORT, () => {
     console.log(`SOS API listening on http://localhost:${env.PORT}  [${env.NODE_ENV}]`);
   });
 }

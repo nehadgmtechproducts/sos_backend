@@ -51,3 +51,6 @@ export function createApp() {
   app.use(errorHandler);
   return app;
 }
+
+// Vercel imports this entry point directly; local startup stays in index.ts.
+export default createApp();
