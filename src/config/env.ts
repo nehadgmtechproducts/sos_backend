@@ -1,6 +1,15 @@
 import 'dotenv/config';
 import { z } from 'zod';
 
+/**
+ * Hosting dashboards (Vercel included) make it easy to leave a variable
+ * defined but blank. For an *optional* setting, blank means "not configured",
+ * not "invalid" — without this, one stray empty field fails validation and
+ * takes the whole app down.
+ */
+const blankToUndefined = (value: unknown) =>
+  typeof value === 'string' && value.trim() === '' ? undefined : value;
+
 const schema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().default(3000),
@@ -13,17 +22,17 @@ const schema = z.object({
   DEFAULT_COUNTRY: z.string().length(2).default('IN'),
   DATABASE_URL: z.string().url('DATABASE_URL must be a valid PostgreSQL connection URL.'),
   /** Path to a Firebase service-account JSON file. Keep it outside source control. */
-  FIREBASE_SERVICE_ACCOUNT_PATH: z.string().min(1).optional(),
+  FIREBASE_SERVICE_ACCOUNT_PATH: z.preprocess(blankToUndefined, z.string().min(1).optional()),
   /** Production-safe alternative: inject the complete JSON through a secret manager. */
-  FIREBASE_SERVICE_ACCOUNT_JSON: z.string().min(1).optional(),
+  FIREBASE_SERVICE_ACCOUNT_JSON: z.preprocess(blankToUndefined, z.string().min(1).optional()),
   /**
    * Shared rate-limit store (Upstash Redis, REST-based — no persistent
    * connection, works well from serverless). Both must be set together, or
    * both omitted. Without them, rate limiting falls back to in-memory —
    * fine for local dev, but only enforced per-instance on serverless.
    */
-  UPSTASH_REDIS_REST_URL: z.string().url().optional(),
-  UPSTASH_REDIS_REST_TOKEN: z.string().min(1).optional(),
+  UPSTASH_REDIS_REST_URL: z.preprocess(blankToUndefined, z.string().url().optional()),
+  UPSTASH_REDIS_REST_TOKEN: z.preprocess(blankToUndefined, z.string().min(1).optional()),
 }).refine(
   (value) => Boolean(value.UPSTASH_REDIS_REST_URL) === Boolean(value.UPSTASH_REDIS_REST_TOKEN),
   { message: 'UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN must be set together.', path: ['UPSTASH_REDIS_REST_URL'] },
