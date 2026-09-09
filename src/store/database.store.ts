@@ -5,12 +5,19 @@ import { env } from '../config/env.js';
 export interface User { id: string; phone: string; name: string | null; email: string | null; profileComplete: boolean; createdAt: string; updatedAt: string }
 export interface EmergencyContact { id: string; userId: string; name: string; phone: string; createdAt: string; updatedAt: string }
 export interface SosActivation { id: string; userId: string; status: 'ACTIVE' | 'RESOLVED'; latitude: number | null; longitude: number | null; accuracy: number | null; message: string | null; triggeredAt: string; resolvedAt: string | null }
+export interface OtpChallenge { id: string; phone: string; otpHash: string; expiresAt: number; attempts: number; consumed: boolean }
 
-const pool = new Pool({ connectionString: env.DATABASE_URL });
+// Serverless platforms (Vercel) can run many concurrent function instances,
+// each importing this module and creating its own Pool — a default max of 10
+// per pool multiplies fast and can exhaust a small Postgres plan's connection
+// limit. Keep each instance's pool small; use a pooled/pgbouncer connection
+// string from your Postgres provider (Neon, Supabase, etc.) in production.
+const pool = new Pool({ connectionString: env.DATABASE_URL, max: 5 });
 const date = (value: unknown) => new Date(value as string | Date).toISOString();
 const user = (r: Record<string, unknown>): User => ({ id: r.id as string, phone: r.phone as string, name: r.name as string | null, email: r.email as string | null, profileComplete: r.profile_complete as boolean, createdAt: date(r.created_at), updatedAt: date(r.updated_at) });
 const contact = (r: Record<string, unknown>): EmergencyContact => ({ id: r.id as string, userId: r.user_id as string, name: r.name as string, phone: r.phone as string, createdAt: date(r.created_at), updatedAt: date(r.updated_at) });
 const activation = (r: Record<string, unknown>): SosActivation => ({ id: r.id as string, userId: r.user_id as string, status: r.status as SosActivation['status'], latitude: r.latitude as number | null, longitude: r.longitude as number | null, accuracy: r.accuracy as number | null, message: r.message as string | null, triggeredAt: date(r.triggered_at), resolvedAt: r.resolved_at ? date(r.resolved_at) : null });
+const challenge = (r: Record<string, unknown>): OtpChallenge => ({ id: r.id as string, phone: r.phone as string, otpHash: r.otp_hash as string, expiresAt: new Date(r.expires_at as string).getTime(), attempts: r.attempts as number, consumed: r.consumed as boolean });
 
 export async function verifyDatabaseConnection() { await pool.query('SELECT 1'); }
 
@@ -66,7 +73,54 @@ export async function ensureSessionSchema() {
     last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`);
   await pool.query('CREATE INDEX IF NOT EXISTS user_devices_user_idx ON user_devices (user_id)');
+  await pool.query(`CREATE TABLE IF NOT EXISTS otp_challenges (
+    id UUID PRIMARY KEY,
+    phone VARCHAR(20) NOT NULL,
+    otp_hash TEXT NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    attempts INT NOT NULL DEFAULT 0,
+    consumed BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`);
+  await pool.query('CREATE INDEX IF NOT EXISTS otp_challenges_phone_created_idx ON otp_challenges (phone, created_at DESC)');
 }
+
+/**
+ * OTP login challenges. Must be durable, shared storage rather than in-process
+ * memory: on a serverless platform (Vercel), the request that creates a
+ * challenge and the request that verifies it can run on different instances
+ * with no shared memory, so an in-memory Map would silently lose challenges.
+ */
+export const challengeStore = {
+  async create(data: Pick<OtpChallenge, 'phone' | 'otpHash' | 'expiresAt'>): Promise<OtpChallenge> {
+    const id = randomUUID();
+    await pool.query(
+      'INSERT INTO otp_challenges (id, phone, otp_hash, expires_at) VALUES ($1, $2, $3, to_timestamp($4 / 1000.0))',
+      [id, data.phone, data.otpHash, data.expiresAt],
+    );
+    // Best-effort cleanup, piggybacked on the write path most likely to happen
+    // — there is no reliable setInterval on serverless, so expiry sweeping
+    // can't be a background timer. Only drops rows well past expiry, never
+    // ones still being verified.
+    void pool.query("DELETE FROM otp_challenges WHERE expires_at < NOW() - INTERVAL '1 day'").catch(() => {});
+    return { id, attempts: 0, consumed: false, ...data };
+  },
+  async find(id: string): Promise<OtpChallenge | undefined> {
+    const q = await pool.query('SELECT * FROM otp_challenges WHERE id = $1', [id]);
+    return q.rows[0] ? challenge(q.rows[0]) : undefined;
+  },
+  async save(c: OtpChallenge) {
+    await pool.query(
+      'UPDATE otp_challenges SET otp_hash = $2, attempts = $3, consumed = $4 WHERE id = $1',
+      [c.id, c.otpHash, c.attempts, c.consumed],
+    );
+  },
+  /** Epoch ms of the most recent challenge for this phone, for the resend cooldown. */
+  async lastSentAt(phone: string): Promise<number | undefined> {
+    const q = await pool.query('SELECT created_at FROM otp_challenges WHERE phone = $1 ORDER BY created_at DESC LIMIT 1', [phone]);
+    return q.rows[0] ? new Date(q.rows[0].created_at as string).getTime() : undefined;
+  },
+};
 
 // Registry of push targets. Ringing a user's devices reads every token here for
 // that user; delivery failures for dead tokens are pruned via removeMany.

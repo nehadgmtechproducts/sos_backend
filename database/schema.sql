@@ -52,3 +52,18 @@ CREATE TABLE IF NOT EXISTS user_devices (
 );
 
 CREATE INDEX IF NOT EXISTS user_devices_user_idx ON user_devices (user_id);
+
+-- OTP login challenges. Must be durable/shared storage (not in-process memory):
+-- on a serverless platform, the request that creates a challenge and the
+-- request that verifies it can run on different instances.
+CREATE TABLE IF NOT EXISTS otp_challenges (
+  id UUID PRIMARY KEY,
+  phone VARCHAR(20) NOT NULL,
+  otp_hash TEXT NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  attempts INT NOT NULL DEFAULT 0,
+  consumed BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS otp_challenges_phone_created_idx ON otp_challenges (phone, created_at DESC);

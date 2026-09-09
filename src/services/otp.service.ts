@@ -1,7 +1,6 @@
 import { createHmac, randomInt, timingSafeEqual } from 'node:crypto';
 import { env } from '../config/env.js';
-import { challengeStore } from '../store/memory.store.js';
-import { userStore } from '../store/database.store.js';
+import { challengeStore, userStore } from '../store/database.store.js';
 import { badRequest, tooManyRequests, unauthorized } from '../utils/errors.js';
 import { otpMessage, sms, exposeOtpInResponse } from './sms.service.js';
 import { sendOtpPush } from './firebase.service.js';
@@ -19,7 +18,7 @@ const safeEqual = (a: string, b: string) => {
 };
 
 export async function requestOtp(phone: string, fcmToken?: string) {
-  const lastSent = challengeStore.lastSentAt(phone);
+  const lastSent = await challengeStore.lastSentAt(phone);
   if (lastSent) {
     const waited = (Date.now() - lastSent) / 1000;
     if (waited < env.OTP_RESEND_COOLDOWN_SECONDS) {
@@ -31,13 +30,13 @@ export async function requestOtp(phone: string, fcmToken?: string) {
   }
 
   const otp = generateOtp();
-  const challenge = challengeStore.create({
+  const challenge = await challengeStore.create({
     phone,
     otpHash: '',
     expiresAt: Date.now() + env.OTP_TTL_SECONDS * 1000,
   });
   challenge.otpHash = hashOtp(otp, challenge.id);
-  challengeStore.save(challenge);
+  await challengeStore.save(challenge);
 
   if (fcmToken) {
     await sendOtpPush(fcmToken, otp, env.OTP_TTL_SECONDS);
@@ -57,7 +56,7 @@ export async function requestOtp(phone: string, fcmToken?: string) {
 }
 
 export async function verifyOtp(requestId: string, otp: string) {
-  const challenge = challengeStore.find(requestId);
+  const challenge = await challengeStore.find(requestId);
   if (!challenge) throw badRequest('INVALID_REQUEST', 'This verification request is no longer valid. Please start again.');
   if (challenge.consumed) throw badRequest('ALREADY_USED', 'This code has already been used. Please request a new one.');
   if (challenge.expiresAt < Date.now()) throw badRequest('OTP_EXPIRED', 'That code has expired. Please request a new one.');
@@ -67,7 +66,7 @@ export async function verifyOtp(requestId: string, otp: string) {
   }
 
   challenge.attempts += 1;
-  challengeStore.save(challenge);
+  await challengeStore.save(challenge);
 
   if (!safeEqual(hashOtp(otp, challenge.id), challenge.otpHash)) {
     const left = Math.max(0, env.OTP_MAX_ATTEMPTS - challenge.attempts);
@@ -75,7 +74,7 @@ export async function verifyOtp(requestId: string, otp: string) {
   }
 
   challenge.consumed = true;
-  challengeStore.save(challenge);
+  await challengeStore.save(challenge);
 
   const existing = await userStore.findByPhone(challenge.phone);
   const user = existing ?? await userStore.create(challenge.phone);
