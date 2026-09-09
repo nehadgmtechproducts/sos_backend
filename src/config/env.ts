@@ -11,15 +11,18 @@ const blankToUndefined = (value: unknown) =>
   typeof value === 'string' && value.trim() === '' ? undefined : value;
 
 const schema = z.object({
-  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-  PORT: z.coerce.number().default(3000),
+  NODE_ENV: z.preprocess(blankToUndefined, z.enum(['development', 'test', 'production']).default('development')),
+  PORT: z.preprocess(blankToUndefined, z.coerce.number().positive().default(3000)),
   JWT_SECRET: z.string().min(16, 'JWT_SECRET must be at least 16 chars'),
-  JWT_EXPIRES_IN: z.string().default('30d'),
-  OTP_TTL_SECONDS: z.coerce.number().default(300),
-  OTP_RESEND_COOLDOWN_SECONDS: z.coerce.number().default(60),
-  OTP_MAX_ATTEMPTS: z.coerce.number().default(5),
+  JWT_EXPIRES_IN: z.preprocess(blankToUndefined, z.string().default('30d')),
+  // .positive() matters as much as the default: a blank var used to coerce to
+  // 0 (Number('') === 0), which silently set the OTP lifetime to zero and made
+  // every code expire the instant it was issued. Fail loudly instead.
+  OTP_TTL_SECONDS: z.preprocess(blankToUndefined, z.coerce.number().positive().default(300)),
+  OTP_RESEND_COOLDOWN_SECONDS: z.preprocess(blankToUndefined, z.coerce.number().nonnegative().default(60)),
+  OTP_MAX_ATTEMPTS: z.preprocess(blankToUndefined, z.coerce.number().positive().default(5)),
   OTP_PEPPER: z.string().min(16, 'OTP_PEPPER must be at least 16 chars'),
-  DEFAULT_COUNTRY: z.string().length(2).default('IN'),
+  DEFAULT_COUNTRY: z.preprocess(blankToUndefined, z.string().length(2).default('IN')),
   DATABASE_URL: z.string().url('DATABASE_URL must be a valid PostgreSQL connection URL.'),
   /** Path to a Firebase service-account JSON file. Keep it outside source control. */
   FIREBASE_SERVICE_ACCOUNT_PATH: z.preprocess(blankToUndefined, z.string().min(1).optional()),
