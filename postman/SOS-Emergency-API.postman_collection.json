@@ -1,0 +1,148 @@
+{
+  "info": {
+    "_postman_id": "e2aeb61a-6aec-4f8e-b8fa-f706647cc62e",
+    "name": "SOS Emergency API",
+    "description": "Postman collection for the SOS smartwatch backend. Run requests in the numbered order. OTP development responses include devOtp automatically.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000" },
+    { "key": "phone", "value": "9876543210" },
+    { "key": "fcmToken", "value": "" },
+    { "key": "requestId", "value": "" },
+    { "key": "devOtp", "value": "" },
+    { "key": "accessToken", "value": "" },
+    { "key": "contactId", "value": "" },
+    { "key": "activationId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1. Authentication",
+      "item": [
+        {
+          "name": "1. Request OTP",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"phone\": \"{{phone}}\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/api/v1/auth/otp/request"
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "const body = pm.response.json();",
+            "pm.collectionVariables.set('requestId', body.requestId);",
+            "if (body.devOtp) pm.collectionVariables.set('devOtp', body.devOtp);",
+            "pm.test('OTP request created', () => pm.response.to.have.status(201));"
+          ] } }]
+        },
+        {
+          "name": "2. Verify OTP",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"requestId\": \"{{requestId}}\",\n  \"otp\": \"{{devOtp}}\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/api/v1/auth/otp/verify"
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "const body = pm.response.json();",
+            "pm.collectionVariables.set('accessToken', body.accessToken);",
+            "pm.test('Access token received', () => pm.expect(body.accessToken).to.be.a('string'));"
+          ] } }]
+        }
+      ]
+    },
+    {
+      "name": "2. Profile",
+      "item": [
+        {
+          "name": "Get My Profile",
+          "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }], "url": "{{baseUrl}}/api/v1/users/me" }
+        },
+        {
+          "name": "Save My Profile",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Neha Shah\",\n  \"email\": \"neha@example.com\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/api/v1/users/me"
+          }
+        },
+        {
+          "name": "Delete My Profile (permanent; run last)",
+          "request": { "method": "DELETE", "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }], "url": "{{baseUrl}}/api/v1/users/me" }
+        }
+      ]
+    },
+    {
+      "name": "3. Emergency Contacts",
+      "item": [
+        {
+          "name": "List Contacts",
+          "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }], "url": "{{baseUrl}}/api/v1/contacts" }
+        },
+        {
+          "name": "Add Contact",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Mom\",\n  \"phone\": \"9876543211\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/api/v1/contacts"
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "const body = pm.response.json();",
+            "pm.collectionVariables.set('contactId', body.contact.id);",
+            "pm.test('Contact added', () => pm.response.to.have.status(201));"
+          ] } }]
+        },
+        {
+          "name": "Get Contact",
+          "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }], "url": "{{baseUrl}}/api/v1/contacts/{{contactId}}" }
+        },
+        {
+          "name": "Edit Contact",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Mom Updated\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/api/v1/contacts/{{contactId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. SOS",
+      "item": [
+        {
+          "name": "Activate SOS",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"latitude\": 19.0760,\n  \"longitude\": 72.8777,\n  \"accuracy\": 12,\n  \"message\": \"Need help\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/api/v1/sos/activate"
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "const body = pm.response.json();",
+            "pm.collectionVariables.set('activationId', body.activation.id);",
+            "pm.test('SOS activated', () => pm.response.to.have.status(201));"
+          ] } }]
+        },
+        {
+          "name": "SOS History",
+          "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }], "url": "{{baseUrl}}/api/v1/sos/history" }
+        },
+        {
+          "name": "Resolve SOS",
+          "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }], "url": "{{baseUrl}}/api/v1/sos/{{activationId}}/resolve" }
+        }
+      ]
+    },
+    {
+      "name": "5. Cleanup (optional)",
+      "item": [
+        {
+          "name": "Delete Contact",
+          "request": { "method": "DELETE", "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }], "url": "{{baseUrl}}/api/v1/contacts/{{contactId}}" }
+        }
+      ]
+    }
+  ]
+}
